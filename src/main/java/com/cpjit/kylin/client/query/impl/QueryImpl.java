@@ -20,6 +20,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.JSONReader;
+import com.alibaba.fastjson.util.TypeUtils;
 import com.cpjit.kylin.client.query.NonUniqueResultException;
 import com.cpjit.kylin.client.query.Query;
 import com.cpjit.kylin.client.query.QueryException;
@@ -58,8 +59,57 @@ public class QueryImpl implements Query {
         this.authorization = authorization;
     }
 
+
     @Override
-    public List<?> list() throws QueryException {
+    public List<?> list() {
+        JSONObject body = listInternal();
+        JSONArray results = body.getJSONArray("results");
+        if (results.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        JSONArray columnMetas = body.getJSONArray("columnMetas");
+        List<Object> items = new ArrayList<Object>(results.size());
+        for (Object o : body.getJSONArray("results")) {
+            JSONArray values = (JSONArray) o;
+            Map<String, Object> item = new HashMap<String, Object>(values.size());
+            int valueIndex = 0;
+            for (Object value : values) {
+                JSONObject columnMeta = columnMetas.getJSONObject(valueIndex++);
+                String columnLabel = columnMeta.getString("label");
+                if (useLowerCase) {
+                    columnLabel = columnLabel.toLowerCase();
+                }
+                item.put(columnLabel, value);
+            }
+            items.add(item);
+        }
+        return items;
+    }
+
+    @Override
+    public <T> List<T> list(Class<T> clazz) {
+        List<?> items = list();
+        List<T> result = new ArrayList<T>(items.size());
+        for (Object item : items) {
+            result.add(TypeUtils.castToJavaBean(item, clazz));
+        }
+        return result;
+    }
+
+    @Override
+    public Object uniqueResult() {
+        List<Map<String, Object>> items = (List<Map<String, Object>>) list();
+        if (items.size() > 1) {
+            throw new NonUniqueResultException(items.size());
+        }
+        if (items.size() == 1) {
+            return items.get(0).values().iterator().next();
+        }
+        return null;
+    }
+
+    private JSONObject listInternal() {
         CloseableHttpClient http = HttpClientBuilder.create().build();
         HttpPost post = new HttpPost(server + "/api/query");
         post.addHeader("Authorization", "Basic " + authorization);
@@ -77,7 +127,8 @@ public class QueryImpl implements Query {
         if (acceptPartial) {
             param.put("acceptPartial", true);
         }
-        post.setEntity(new StringEntity(JSON.toJSONString(param), ContentType.APPLICATION_JSON));
+        String json = JSON.toJSONString(param);
+        post.setEntity(new StringEntity(json, ContentType.APPLICATION_JSON));
         InputStream is;
         try {
             HttpResponse resp = http.execute(post);
@@ -92,30 +143,8 @@ public class QueryImpl implements Query {
         }
         JSONReader reader = new JSONReader(new InputStreamReader(is));
         JSONObject body = (JSONObject) reader.readObject();
-
-        JSONArray results = body.getJSONArray("results");
         closeHttpClient(http);
-        if (results.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        JSONArray columnMetas = body.getJSONArray("columnMetas");
-        List<Object> items = new ArrayList<Object>(results.size());
-        for (Object o : body.getJSONArray("results")) {
-            JSONArray values = (JSONArray) o;
-            Map<String, Object> item = new HashMap<String, Object>(values.size());
-            int valueIndex = 0;
-            for (Object value : values) {
-                JSONObject columnMeta = columnMetas.getJSONObject(valueIndex++);
-                String columnName = columnMeta.getString("name");
-                if (useLowerCase) {
-                    columnName = columnName.toLowerCase();
-                }
-                item.put(columnName, value);
-            }
-            items.add(item);
-        }
-        return items;
+        return body;
     }
 
     private void closeHttpClient(CloseableHttpClient http) {
@@ -125,17 +154,6 @@ public class QueryImpl implements Query {
         }
     }
 
-    @Override
-    public Object uniqueResult() {
-        List<Map<String, Object>> items = (List<Map<String, Object>>) list();
-        if (items.size() > 1) {
-            throw new NonUniqueResultException(items.size());
-        }
-        if (items.size() == 1) {
-            return items.get(0).values().iterator().next();
-        }
-        return null;
-    }
 
     @Override
     public Query setProject(String project) {

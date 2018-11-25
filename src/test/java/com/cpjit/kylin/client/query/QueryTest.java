@@ -32,17 +32,17 @@ public class QueryTest {
 
     @Before
     public void init() {
-        kylinClient = new KylinClientImpl("http://10.0.188.8:8106/kylin", "ADMIN", "KYLIN");
+        kylinClient = new KylinClientImpl("http://10.0.188.93:18087/kylin", "ADMIN", "KYLIN");
     }
 
     @Test
     public void testQuery() {
-        String sql = "select BUYER_ID, count(*) total from KYLIN_SALES group by BUYER_ID";
+        String sql = "select orginternalcode orgCode,count(*) total from floatingpopulations group by orginternalcode";
         List<?> result = kylinClient.createQuery(sql)
-                .setProject("learn_kylin")
+                .setProject("zongzhi_analyze")
                 .useLowerCase()
                 .limit(10)
-                .list();
+                .list(Result.class);
         System.out.println(result);
     }
 

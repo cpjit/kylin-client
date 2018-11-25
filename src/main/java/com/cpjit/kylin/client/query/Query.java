@@ -29,6 +29,11 @@ public interface Query {
     List<?> list();
 
     /**
+     * @throws QueryException
+     */
+    <T> List<T> list(Class<T> clazz);
+
+    /**
      * @throws NonUniqueResultException
      */
     Object uniqueResult();
